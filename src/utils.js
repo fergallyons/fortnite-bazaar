@@ -1,5 +1,13 @@
 export const VBUCK_TO_USD = 7.99 / 1000
 
+// Used when the live exchange rate API is unavailable
+export const FALLBACK_RATES = {
+  USD: 1, EUR: 0.92, GBP: 0.79, AUD: 1.55, CAD: 1.37,
+  JPY: 149, KRW: 1330, BRL: 4.97, MXN: 17.1, INR: 83.1,
+  SGD: 1.34, CHF: 0.89, NZD: 1.63, NOK: 10.6, SEK: 10.4,
+  DKK: 6.88, PLN: 3.99, TRY: 30.5, ZAR: 18.8,
+}
+
 export const RARITY_PRICES = {
   common: 800, uncommon: 1200, rare: 1500,
   epic: 2000, legendary: 2000, mythic: 2800,

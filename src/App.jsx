@@ -4,8 +4,18 @@ import SkinModal from './components/SkinModal'
 import NewsSection from './components/NewsSection'
 import {
   getSkinPrice, getRarityColor, convertVBucks, formatCurrency,
-  CURRENCIES, detectCurrency,
+  CURRENCIES, detectCurrency, FALLBACK_RATES,
 } from './utils'
+
+async function safeFetch(url) {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
 
 const RARITIES = ['All', 'Legendary', 'Epic', 'Rare', 'Uncommon', 'Common']
 const PAGE_SIZE = 60
@@ -58,21 +68,23 @@ export default function App() {
 
   useEffect(() => {
     const load = async () => {
-      try {
-        const [cosRes, shopRes, newsRes, ratesRes] = await Promise.all([
-          fetch('https://fortnite-api.com/v2/cosmetics/br?language=en'),
-          fetch('https://fortnite-api.com/v2/shop/br?language=en'),
-          fetch('https://fortnite-api.com/v2/news/br?language=en'),
-          fetch('https://api.frankfurter.app/latest?from=USD'),
-        ])
-        const [cosData, shopData, newsData, ratesData] = await Promise.all([
-          cosRes.json(), shopRes.json(), newsRes.json(), ratesRes.json(),
-        ])
+      // Cosmetics is the only required API — everything else degrades gracefully
+      const [cosData, shopData, newsData, ratesData] = await Promise.all([
+        safeFetch('https://fortnite-api.com/v2/cosmetics/br?language=en'),
+        safeFetch('https://fortnite-api.com/v2/shop/br?language=en'),
+        safeFetch('https://fortnite-api.com/v2/news/br?language=en'),
+        safeFetch('https://api.frankfurter.app/latest?from=USD'),
+      ])
 
-        const outfits = (cosData.data || []).filter(i => i.type?.value === 'outfit')
-        setSkins(outfits)
+      if (!cosData) {
+        setError('Could not reach the Fortnite API. Check your connection and try again.')
+        setLoading(false)
+        return
+      }
 
-        // Map every shop item ID → price, no type filter so nothing is missed
+      setSkins((cosData.data || []).filter(i => i.type?.value === 'outfit'))
+
+      if (shopData) {
         const priceMap = {}
         for (const entry of shopData.data?.entries || []) {
           const price = entry.finalPrice || entry.regularPrice
@@ -81,16 +93,17 @@ export default function App() {
           }
         }
         setShopPriceMap(priceMap)
+      }
 
+      if (newsData) {
         const motds = newsData.data?.motds || newsData.data?.messages || []
         setNews(motds.filter(m => !m.hidden))
-
-        setRates({ USD: 1, ...(ratesData.rates || {}) })
-      } catch {
-        setError('Failed to load. Check your connection.')
-      } finally {
-        setLoading(false)
       }
+
+      // Fall back to hardcoded rates if the exchange rate API is down
+      setRates(ratesData?.rates ? { USD: 1, ...ratesData.rates } : FALLBACK_RATES)
+
+      setLoading(false)
     }
     load()
   }, [])

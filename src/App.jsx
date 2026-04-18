@@ -71,9 +71,9 @@ export default function App() {
       // Cosmetics is the only required API — everything else degrades gracefully
       const [cosData, shopData, newsData, ratesData] = await Promise.all([
         safeFetch('https://fortnite-api.com/v2/cosmetics/br?language=en'),
-        safeFetch('https://fortnite-api.com/v2/shop/br?language=en'),
+        safeFetch('https://fortnite-api.com/v2/shop/br/combined?language=en'),
         safeFetch('https://fortnite-api.com/v2/news/br?language=en'),
-        safeFetch('https://api.frankfurter.app/latest?from=USD'),
+        safeFetch('https://open.er-api.com/v6/latest/USD'),
       ])
 
       if (!cosData) {
@@ -100,8 +100,9 @@ export default function App() {
         setNews(motds.filter(m => !m.hidden))
       }
 
-      // Fall back to hardcoded rates if the exchange rate API is down
-      setRates(ratesData?.rates ? { USD: 1, ...ratesData.rates } : FALLBACK_RATES)
+      // open.er-api.com uses `rates`, frankfurter used `rates` too — fall back to hardcoded if missing
+      const liveRates = ratesData?.rates
+      setRates(liveRates ? { USD: 1, ...liveRates } : FALLBACK_RATES)
 
       setLoading(false)
     }

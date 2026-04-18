@@ -1,73 +1,24 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import './App.css'
-
-const RARITY_PRICES = {
-  common: 800,
-  uncommon: 1200,
-  rare: 1500,
-  epic: 2000,
-  legendary: 2000,
-  mythic: 2800,
-}
-
-const SERIES_PRICES = {
-  'marvel series': 1500,
-  'dc series': 1500,
-  'icon series': 1500,
-  'gaming legends series': 2000,
-  'dark series': 1500,
-  'frozen series': 1500,
-  'lava series': 1500,
-  'slurp series': 1200,
-  'shadow series': 1500,
-  'star wars series': 2000,
-}
-
-const RARITY_COLORS = {
-  common: '#bebebe',
-  uncommon: '#69bb45',
-  rare: '#49b9e9',
-  epic: '#b44eed',
-  legendary: '#f5a623',
-  mythic: '#ffe533',
-  'marvel series': '#ed1d24',
-  'dc series': '#0078f0',
-  'icon series': '#1db954',
-  'gaming legends series': '#ff6b00',
-  'dark series': '#7b2fff',
-  'frozen series': '#a8d8ea',
-  'lava series': '#ff4500',
-  'slurp series': '#00c2c7',
-  'star wars series': '#ffe81f',
-  'shadow series': '#9b9b9b',
-}
+import SkinModal from './components/SkinModal'
+import NewsSection from './components/NewsSection'
+import {
+  getSkinPrice, getRarityColor, convertVBucks, formatCurrency,
+  CURRENCIES, detectCurrency,
+} from './utils'
 
 const RARITIES = ['All', 'Legendary', 'Epic', 'Rare', 'Uncommon', 'Common']
 const PAGE_SIZE = 60
 
-function getSkinData(skin, shopPrices) {
-  const entry = shopPrices[skin.id]
-  if (entry) return { price: entry.finalPrice, inShop: true }
-  const series = skin.series?.value?.toLowerCase()
-  if (series && SERIES_PRICES[series]) return { price: SERIES_PRICES[series], inShop: false }
-  const rarity = skin.rarity?.value?.toLowerCase()
-  return { price: RARITY_PRICES[rarity] || 800, inShop: false }
-}
-
-function getRarityColor(skin) {
-  const series = skin.series?.value?.toLowerCase()
-  if (series && RARITY_COLORS[series]) return RARITY_COLORS[series]
-  return RARITY_COLORS[skin.rarity?.value?.toLowerCase()] || '#bebebe'
-}
-
-function SkinCard({ skin, inShop, price }) {
+function SkinCard({ skin, currency, rates, onClick }) {
   const color = getRarityColor(skin)
   const label = skin.series?.displayValue || skin.rarity?.displayValue || ''
   const imageUrl = skin.images?.icon || skin.images?.smallIcon
+  const localPrice = convertVBucks(skin.price, currency, rates)
 
   return (
-    <div className="skin-card" style={{ '--rc': color }}>
-      {inShop && <span className="badge">In Shop</span>}
+    <div className="skin-card" style={{ '--rc': color }} onClick={() => onClick(skin)}>
+      {skin.inShop && <span className="badge">In Shop</span>}
       <div className="skin-img">
         {imageUrl
           ? <img src={imageUrl} alt={skin.name} loading="lazy" />
@@ -78,8 +29,11 @@ function SkinCard({ skin, inShop, price }) {
         <div className="skin-rarity">{label}</div>
         <div className="skin-price">
           <span className="vb">V</span>
-          {price?.toLocaleString()}
+          {skin.price?.toLocaleString()}
         </div>
+        {localPrice != null && (
+          <div className="skin-local-price">{formatCurrency(localPrice, currency)}</div>
+        )}
       </div>
     </div>
   )
@@ -87,38 +41,53 @@ function SkinCard({ skin, inShop, price }) {
 
 export default function App() {
   const [skins, setSkins] = useState([])
-  const [shopPrices, setShopPrices] = useState({})
+  const [shopPriceMap, setShopPriceMap] = useState({})
+  const [news, setNews] = useState([])
+  const [rates, setRates] = useState({ USD: 1 })
+  const [currency, setCurrency] = useState(detectCurrency)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [rarity, setRarity] = useState('All')
+  const [rarityFilter, setRarityFilter] = useState('All')
+  const [seriesFilter, setSeriesFilter] = useState('All')
   const [sort, setSort] = useState('name')
   const [inShopOnly, setInShopOnly] = useState(false)
   const [page, setPage] = useState(1)
+  const [selectedSkin, setSelectedSkin] = useState(null)
+  const [showNews, setShowNews] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [cosRes, shopRes] = await Promise.all([
+        const [cosRes, shopRes, newsRes, ratesRes] = await Promise.all([
           fetch('https://fortnite-api.com/v2/cosmetics/br?language=en'),
           fetch('https://fortnite-api.com/v2/shop/br?language=en'),
+          fetch('https://fortnite-api.com/v2/news/br?language=en'),
+          fetch('https://api.frankfurter.app/latest?from=USD'),
         ])
-        const [cosData, shopData] = await Promise.all([cosRes.json(), shopRes.json()])
+        const [cosData, shopData, newsData, ratesData] = await Promise.all([
+          cosRes.json(), shopRes.json(), newsRes.json(), ratesRes.json(),
+        ])
 
         const outfits = (cosData.data || []).filter(i => i.type?.value === 'outfit')
         setSkins(outfits)
 
+        // Map every shop item ID → price, no type filter so nothing is missed
         const priceMap = {}
         for (const entry of shopData.data?.entries || []) {
+          const price = entry.finalPrice || entry.regularPrice
           for (const item of entry.items || []) {
-            if (item.type?.value === 'outfit') {
-              priceMap[item.id] = entry
-            }
+            if (item.id) priceMap[item.id] = price
           }
         }
-        setShopPrices(priceMap)
+        setShopPriceMap(priceMap)
+
+        const motds = newsData.data?.motds || newsData.data?.messages || []
+        setNews(motds.filter(m => !m.hidden))
+
+        setRates({ USD: 1, ...(ratesData.rates || {}) })
       } catch {
-        setError('Failed to load skins. Check your connection and try again.')
+        setError('Failed to load. Check your connection.')
       } finally {
         setLoading(false)
       }
@@ -126,26 +95,37 @@ export default function App() {
     load()
   }, [])
 
-  const processed = useMemo(() =>
-    skins.map(s => ({ ...s, ...getSkinData(s, shopPrices) })),
-    [skins, shopPrices]
+  const processedSkins = useMemo(
+    () => skins.map(s => ({ ...s, ...getSkinPrice(s, shopPriceMap) })),
+    [skins, shopPriceMap],
+  )
+
+  const seriesList = useMemo(() => {
+    const set = new Set()
+    skins.forEach(s => { if (s.series?.displayValue) set.add(s.series.displayValue) })
+    return ['All', ...Array.from(set).sort()]
+  }, [skins])
+
+  const shopSkins = useMemo(
+    () => processedSkins.filter(s => s.inShop),
+    [processedSkins],
   )
 
   const filtered = useMemo(() => {
-    let result = processed
+    let r = processedSkins
 
     if (search) {
       const q = search.toLowerCase()
-      result = result.filter(s => s.name?.toLowerCase().includes(q))
+      r = r.filter(s => s.name?.toLowerCase().includes(q))
     }
-    if (rarity !== 'All') {
-      result = result.filter(s => s.rarity?.displayValue?.toLowerCase() === rarity.toLowerCase())
-    }
-    if (inShopOnly) {
-      result = result.filter(s => s.inShop)
-    }
+    if (rarityFilter !== 'All')
+      r = r.filter(s => s.rarity?.displayValue?.toLowerCase() === rarityFilter.toLowerCase())
+    if (seriesFilter !== 'All')
+      r = r.filter(s => s.series?.displayValue === seriesFilter)
+    if (inShopOnly)
+      r = r.filter(s => s.inShop)
 
-    return [...result].sort((a, b) => {
+    return [...r].sort((a, b) => {
       if (sort === 'price-asc') return (a.price || 0) - (b.price || 0)
       if (sort === 'price-desc') return (b.price || 0) - (a.price || 0)
       if (sort === 'newest') {
@@ -156,18 +136,15 @@ export default function App() {
       }
       return (a.name || '').localeCompare(b.name || '')
     })
-  }, [processed, search, rarity, sort, inShopOnly])
-
-  const resetPage = useCallback(() => setPage(1), [])
+  }, [processedSkins, search, rarityFilter, seriesFilter, sort, inShopOnly])
 
   const visible = filtered.slice(0, page * PAGE_SIZE)
-  const hasMore = visible.length < filtered.length
-  const shopCount = Object.keys(shopPrices).length
+  const resetPage = useCallback(() => setPage(1), [])
 
   if (loading) return (
     <div className="full-center">
       <div className="spinner" />
-      <p>Loading Fortnite skins…</p>
+      <p>Loading Cameron's Fortnite Bazaar…</p>
     </div>
   )
 
@@ -181,9 +158,43 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Cameron's Fortnite Bazaar</h1>
-        <p>{skins.length.toLocaleString()} outfits · {shopCount} in shop today</p>
+        <div className="header-top">
+          <h1>Cameron's Fortnite Bazaar</h1>
+          <select
+            className="currency-select"
+            value={currency}
+            onChange={e => setCurrency(e.target.value)}
+            title="Change currency"
+          >
+            {CURRENCIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <p className="header-sub">
+          {skins.length.toLocaleString()} outfits ·{' '}
+          <button className="link-btn" onClick={() => setShowNews(v => !v)}>
+            {showNews ? 'hide' : 'show'} news
+          </button>
+          {shopSkins.length > 0 && ` · ${shopSkins.length} in shop today`}
+        </p>
       </header>
+
+      {showNews && <NewsSection items={news} />}
+
+      {shopSkins.length > 0 && (
+        <section className="shop-section">
+          <h2 className="section-title">
+            <span className="section-dot" />
+            Today's Shop
+          </h2>
+          <div className="shop-strip">
+            {shopSkins.map(skin => (
+              <div key={skin.id} className="shop-strip-item">
+                <SkinCard skin={skin} currency={currency} rates={rates} onClick={setSelectedSkin} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="controls">
         <input
@@ -194,14 +205,17 @@ export default function App() {
           onChange={e => { setSearch(e.target.value); resetPage() }}
         />
         <div className="filter-row">
-          <select value={rarity} onChange={e => { setRarity(e.target.value); resetPage() }}>
+          <select value={rarityFilter} onChange={e => { setRarityFilter(e.target.value); resetPage() }}>
             {RARITIES.map(r => <option key={r}>{r}</option>)}
+          </select>
+          <select value={seriesFilter} onChange={e => { setSeriesFilter(e.target.value); resetPage() }}>
+            {seriesList.map(s => <option key={s}>{s}</option>)}
           </select>
           <select value={sort} onChange={e => setSort(e.target.value)}>
             <option value="name">A – Z</option>
             <option value="price-asc">Price ↑</option>
             <option value="price-desc">Price ↓</option>
-            <option value="newest">Newest First</option>
+            <option value="newest">Newest</option>
           </select>
           <button
             className={`btn-shop${inShopOnly ? ' active' : ''}`}
@@ -216,16 +230,33 @@ export default function App() {
 
       <div className="grid">
         {visible.map(skin => (
-          <SkinCard key={skin.id} skin={skin} inShop={skin.inShop} price={skin.price} />
+          <SkinCard
+            key={skin.id}
+            skin={skin}
+            currency={currency}
+            rates={rates}
+            onClick={setSelectedSkin}
+          />
         ))}
       </div>
 
-      {hasMore && (
+      {visible.length < filtered.length && (
         <div className="load-more">
           <button className="btn-more" onClick={() => setPage(p => p + 1)}>
-            Load more ({filtered.length - visible.length} remaining)
+            Load more ({(filtered.length - visible.length).toLocaleString()} remaining)
           </button>
         </div>
+      )}
+
+      {selectedSkin && (
+        <SkinModal
+          skin={selectedSkin}
+          allSkins={processedSkins}
+          currency={currency}
+          rates={rates}
+          onClose={() => setSelectedSkin(null)}
+          onSelect={setSelectedSkin}
+        />
       )}
     </div>
   )

@@ -60,6 +60,14 @@ export function formatCurrency(amount, currency) {
   }).format(amount)
 }
 
+export const COSMETIC_TYPES = [
+  { value: 'outfit',    label: 'Outfits' },
+  { value: 'backbling', label: 'Back Bling' },
+  { value: 'pickaxe',   label: 'Pickaxes' },
+  { value: 'glider',    label: 'Gliders' },
+  { value: 'emote',     label: 'Emotes' },
+]
+
 export const CURRENCIES = [
   'USD','EUR','GBP','AUD','CAD','JPY','KRW','BRL',
   'MXN','INR','SGD','CHF','NZD','NOK','SEK','DKK','PLN','TRY','ZAR',

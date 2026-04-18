@@ -39,15 +39,6 @@
 
 .header-sub { color: var(--text2); font-size: 0.85rem; margin-top: 6px; }
 
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: inherit;
-  padding: 0;
-  text-decoration: underline;
-}
 
 .currency-select {
   padding: 6px 10px;

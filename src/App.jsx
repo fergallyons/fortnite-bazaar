@@ -64,7 +64,6 @@ export default function App() {
   const [inShopOnly, setInShopOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [selectedSkin, setSelectedSkin] = useState(null)
-  const [showNews, setShowNews] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -88,7 +87,7 @@ export default function App() {
         const priceMap = {}
         for (const entry of shopData.data?.entries || []) {
           const price = entry.finalPrice || entry.regularPrice
-          for (const item of entry.items || []) {
+          for (const item of entry.brItems || entry.items || []) {
             if (item.id) priceMap[item.id] = price
           }
         }
@@ -184,15 +183,12 @@ export default function App() {
           </select>
         </div>
         <p className="header-sub">
-          {skins.length.toLocaleString()} outfits ·{' '}
-          <button className="link-btn" onClick={() => setShowNews(v => !v)}>
-            {showNews ? 'hide' : 'show'} news
-          </button>
+          {skins.length.toLocaleString()} outfits
           {shopSkins.length > 0 && ` · ${shopSkins.length} in shop today`}
         </p>
       </header>
 
-      {showNews && <NewsSection items={news} />}
+      <NewsSection items={news} />
 
       {shopSkins.length > 0 && (
         <section className="shop-section">
